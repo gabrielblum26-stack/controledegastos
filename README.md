@@ -1,3 +1,5 @@
+Importante: este projeto já foi ajustado para usar Next.js 15.5.7, que está entre as versões corrigidas para o CVE-2025-66478.
+
 # Controle de Gastos - Next.js + Neon
 
 Versão simples e funcional para subir na Vercel, com:
