@@ -1,28 +1,25 @@
 {
-  "name": "controle-gastos-vercel",
+  "name": "controle-gastos-next-neon",
   "version": "1.0.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "prisma generate && next build",
+    "build": "next build",
     "start": "next start",
-    "lint": "next lint",
-    "postinstall": "prisma generate",
-    "seed": "node prisma/seed.js"
+    "lint": "next lint"
   },
   "dependencies": {
-    "@prisma/client": "^6.5.0",
-    "clsx": "^2.1.1",
+    "@neondatabase/serverless": "^0.10.4",
     "lucide-react": "^0.511.0",
-    "next": "^15.2.2",
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "next": "15.2.4",
+    "react": "19.0.0",
+    "react-dom": "19.0.0",
+    "recharts": "^2.15.4"
   },
   "devDependencies": {
-    "prisma": "^6.5.0",
-    "typescript": "^5.8.2",
     "@types/node": "^22.13.10",
     "@types/react": "^19.0.10",
-    "@types/react-dom": "^19.0.4"
+    "@types/react-dom": "^19.0.4",
+    "typescript": "^5.8.2"
   }
 }

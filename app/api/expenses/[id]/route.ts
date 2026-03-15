@@ -1,41 +1,57 @@
-import { NextRequest, NextResponse } from "next/server";
-import { Person } from "@prisma/client";
-import { prisma } from "@/lib/prisma";
+import { NextRequest, NextResponse } from 'next/server';
+import { ensureSchema, sql } from '@/lib/db';
 
-export async function PUT(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> },
-) {
-  const { id } = await params;
-  const body = await req.json();
-  const { description, amount, person, spentAt } = body;
+export const dynamic = 'force-dynamic';
 
-  if (!description || !amount || !person) {
-    return NextResponse.json({ error: "Dados inválidos." }, { status: 400 });
+type Params = { params: Promise<{ id: string }> };
+
+export async function PUT(request: NextRequest, { params }: Params) {
+  try {
+    await ensureSchema();
+    const { id } = await params;
+    const expenseId = Number(id);
+    const body = await request.json();
+    const title = String(body.title ?? '').trim();
+    const amount = Number(body.amount);
+    const person = body.person === 'Mulher' ? 'Mulher' : 'Marido';
+    const spentAt = String(body.spent_at ?? '').trim();
+
+    if (!expenseId || !title || !spentAt || Number.isNaN(amount) || amount < 0) {
+      return NextResponse.json({ error: 'Dados inválidos.' }, { status: 400 });
+    }
+
+    const [updated] = await sql`
+      UPDATE expenses
+      SET title = ${title}, amount = ${amount}, person = ${person}, spent_at = ${spentAt}
+      WHERE id = ${expenseId}
+      RETURNING id, title, amount::float8 AS amount, person, spent_at::text, created_at::text;
+    `;
+
+    if (!updated) {
+      return NextResponse.json({ error: 'Gasto não encontrado.' }, { status: 404 });
+    }
+
+    return NextResponse.json(updated);
+  } catch (error) {
+    console.error(error);
+    return NextResponse.json({ error: 'Erro ao editar gasto.' }, { status: 500 });
   }
-
-  const updated = await prisma.expense.update({
-    where: { id },
-    data: {
-      description: String(description).trim(),
-      amount: Number(amount),
-      person: person === "MULHER" ? Person.MULHER : Person.MARIDO,
-      spentAt: spentAt ? new Date(spentAt) : undefined,
-    },
-  });
-
-  return NextResponse.json({
-    ...updated,
-    amount: Number(updated.amount),
-  });
 }
 
-export async function DELETE(
-  _req: NextRequest,
-  { params }: { params: Promise<{ id: string }> },
-) {
-  const { id } = await params;
+export async function DELETE(_: NextRequest, { params }: Params) {
+  try {
+    await ensureSchema();
+    const { id } = await params;
+    const expenseId = Number(id);
 
-  await prisma.expense.delete({ where: { id } });
-  return NextResponse.json({ success: true });
+    if (!expenseId) {
+      return NextResponse.json({ error: 'ID inválido.' }, { status: 400 });
+    }
+
+    const deleted = await sql`DELETE FROM expenses WHERE id = ${expenseId};`;
+    return NextResponse.json({ ok: true, deleted });
+  } catch (error) {
+    console.error(error);
+    return NextResponse.json({ error: 'Erro ao excluir gasto.' }, { status: 500 });
+  }
 }

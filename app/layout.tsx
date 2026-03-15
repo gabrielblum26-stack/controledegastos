@@ -1,9 +1,9 @@
-import "./globals.css";
-import type { Metadata } from "next";
+import './globals.css';
+import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: "Controle de Gastos",
-  description: "Controle simples de gastos do casal",
+  title: 'Controle de Gastos',
+  description: 'Controle de gastos para casal',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

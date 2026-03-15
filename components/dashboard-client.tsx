@@ -1,284 +1,388 @@
-"use client";
+'use client';
 
-import { useMemo, useState } from "react";
-import { CalendarDays, Pencil, Plus, Trash2, User, UserRound, Wallet, X } from "lucide-react";
-import Link from "next/link";
-import { formatCurrency, formatDate, monthLabel } from "@/lib/format";
-import { ExpenseItem, Person, Summary } from "@/lib/types";
-
-type Props = {
-  initialSummary: Summary;
-  selectedProfile: "marido" | "mulher";
-};
+import { useEffect, useMemo, useState } from 'react';
+import {
+  CalendarDays,
+  Pencil,
+  Plus,
+  Receipt,
+  Trash2,
+  UserRound,
+  Users,
+  Wallet,
+  X,
+  LogOut,
+} from 'lucide-react';
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Legend,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from 'recharts';
+import { formatCurrency, formatDate, getMonthLabel } from '@/lib/format';
+import { Expense, Perfil } from '@/lib/types';
 
 type FormState = {
-  id?: string;
-  description: string;
+  id?: number;
+  title: string;
   amount: string;
-  person: Person;
-  spentAt: string;
+  person: Perfil;
+  spent_at: string;
 };
 
-const emptyForm = (person: Person): FormState => ({
-  description: "",
-  amount: "",
-  person,
-  spentAt: new Date().toISOString().slice(0, 10),
+const initialForm = (): FormState => ({
+  title: '',
+  amount: '',
+  person: 'Marido',
+  spent_at: new Date().toISOString().slice(0, 10),
 });
 
-export default function DashboardClient({ initialSummary, selectedProfile }: Props) {
-  const defaultPerson = selectedProfile === "mulher" ? "MULHER" : "MARIDO";
-  const [summary, setSummary] = useState(initialSummary);
-  const [open, setOpen] = useState(false);
+export default function DashboardClient() {
+  const [perfil, setPerfil] = useState<Perfil | null>(null);
+  const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [showModal, setShowModal] = useState(false);
+  const [form, setForm] = useState<FormState>(initialForm());
   const [saving, setSaving] = useState(false);
-  const [form, setForm] = useState<FormState>(emptyForm(defaultPerson));
 
-  const totalMax = useMemo(() => {
-    const values = summary.byDay.flatMap((item) => [item.husband, item.wife]);
-    return Math.max(...values, 1);
-  }, [summary.byDay]);
+  useEffect(() => {
+    const saved = window.localStorage.getItem('controle-gastos-perfil');
+    if (saved === 'Marido' || saved === 'Mulher') {
+      setPerfil(saved);
+    }
+  }, []);
 
-  async function refreshSummary() {
-    const res = await fetch("/api/summary", { cache: "no-store" });
-    const data = await res.json();
-    setSummary(data);
+  useEffect(() => {
+    if (!perfil) return;
+    void loadExpenses();
+  }, [perfil]);
+
+  async function loadExpenses() {
+    setLoading(true);
+    try {
+      const response = await fetch('/api/expenses', { cache: 'no-store' });
+      const data = await response.json();
+      setExpenses(Array.isArray(data) ? data : []);
+    } finally {
+      setLoading(false);
+    }
   }
 
-  function closeModal() {
-    setOpen(false);
-    setForm(emptyForm(defaultPerson));
+  function chooseProfile(nextPerfil: Perfil) {
+    window.localStorage.setItem('controle-gastos-perfil', nextPerfil);
+    setPerfil(nextPerfil);
   }
 
-  function openNewModal() {
-    setForm(emptyForm(defaultPerson));
-    setOpen(true);
+  function logout() {
+    window.localStorage.removeItem('controle-gastos-perfil');
+    setPerfil(null);
   }
 
-  function openEditModal(expense: ExpenseItem) {
+  function openCreateModal() {
+    setForm(initialForm());
+    setShowModal(true);
+  }
+
+  function openEditModal(expense: Expense) {
     setForm({
       id: expense.id,
-      description: expense.description,
-      amount: String(expense.amount).replace(".", ","),
+      title: expense.title,
+      amount: String(expense.amount).replace('.', ','),
       person: expense.person,
-      spentAt: expense.spentAt.slice(0, 10),
+      spent_at: expense.spent_at.slice(0, 10),
     });
-    setOpen(true);
+    setShowModal(true);
   }
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
+  async function onSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
     setSaving(true);
 
+    const normalizedAmount = Number(form.amount.replace(',', '.'));
+    const payload = {
+      title: form.title.trim(),
+      amount: normalizedAmount,
+      person: form.person,
+      spent_at: form.spent_at,
+    };
+
+    const isEditing = Boolean(form.id);
+    const url = isEditing ? `/api/expenses/${form.id}` : '/api/expenses';
+    const method = isEditing ? 'PUT' : 'POST';
+
     try {
-      const payload = {
-        description: form.description,
-        amount: Number(form.amount.replace(".", "").replace(",", ".")),
-        person: form.person,
-        spentAt: form.spentAt,
-      };
-
-      const method = form.id ? "PUT" : "POST";
-      const url = form.id ? `/api/expenses/${form.id}` : "/api/expenses";
-
-      const res = await fetch(url, {
+      const response = await fetch(url, {
         method,
-        headers: { "Content-Type": "application/json" },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
 
-      if (!res.ok) {
-        throw new Error("Não foi possível salvar o gasto.");
+      if (!response.ok) {
+        throw new Error('Falha ao salvar gasto.');
       }
 
-      await refreshSummary();
-      closeModal();
+      setShowModal(false);
+      setForm(initialForm());
+      await loadExpenses();
     } catch (error) {
-      alert(error instanceof Error ? error.message : "Erro ao salvar.");
+      alert(error instanceof Error ? error.message : 'Erro inesperado.');
     } finally {
       setSaving(false);
     }
   }
 
-  async function handleDelete(expense: ExpenseItem) {
-    const confirmed = window.confirm(`Excluir o gasto \"${expense.description}\"?`);
+  async function onDelete(id: number) {
+    const confirmed = window.confirm('Deseja realmente excluir este gasto?');
     if (!confirmed) return;
 
     try {
-      const res = await fetch(`/api/expenses/${expense.id}`, { method: "DELETE" });
-      if (!res.ok) {
-        throw new Error("Não foi possível excluir o gasto.");
+      const response = await fetch(`/api/expenses/${id}`, {
+        method: 'DELETE',
+      });
+
+      if (!response.ok) {
+        throw new Error('Falha ao excluir gasto.');
       }
-      await refreshSummary();
+
+      await loadExpenses();
     } catch (error) {
-      alert(error instanceof Error ? error.message : "Erro ao excluir.");
+      alert(error instanceof Error ? error.message : 'Erro inesperado.');
     }
   }
 
+  const summary = useMemo(() => {
+    const total = expenses.reduce((sum, expense) => sum + expense.amount, 0);
+    const husband = expenses
+      .filter((expense) => expense.person === 'Marido')
+      .reduce((sum, expense) => sum + expense.amount, 0);
+    const wife = expenses
+      .filter((expense) => expense.person === 'Mulher')
+      .reduce((sum, expense) => sum + expense.amount, 0);
+
+    return {
+      total,
+      husband,
+      wife,
+      count: expenses.length,
+      husbandPct: total ? (husband / total) * 100 : 0,
+      wifePct: total ? (wife / total) * 100 : 0,
+    };
+  }, [expenses]);
+
+  const chartData = useMemo(() => {
+    const byDay = new Map<string, { day: string; Marido: number; Mulher: number }>();
+
+    for (const expense of expenses) {
+      const date = new Date(expense.spent_at);
+      const day = `Dia ${date.getDate()}`;
+      const current = byDay.get(day) ?? { day, Marido: 0, Mulher: 0 };
+      current[expense.person] += expense.amount;
+      byDay.set(day, current);
+    }
+
+    return Array.from(byDay.values()).sort((a, b) => {
+      const da = Number(a.day.replace('Dia ', ''));
+      const db = Number(b.day.replace('Dia ', ''));
+      return da - db;
+    });
+  }, [expenses]);
+
+  if (!perfil) {
+    return (
+      <main className="authShell">
+        <section className="authCard">
+          <div className="brandIcon">
+            <Wallet size={32} />
+          </div>
+          <h1>Controle de Gastos</h1>
+          <p>Gerencie as despesas do casal de forma simples e organizada</p>
+
+          <div className="selectorTitle">
+            <Users size={18} />
+            <span>Selecione seu perfil para entrar:</span>
+          </div>
+
+          <div className="profileGrid">
+            <button className="profileButton" onClick={() => chooseProfile('Marido')}>
+              <UserRound size={18} />
+              <strong>Marido</strong>
+            </button>
+            <button className="profileButton" onClick={() => chooseProfile('Mulher')}>
+              <UserRound size={18} />
+              <strong>Mulher</strong>
+            </button>
+          </div>
+        </section>
+      </main>
+    );
+  }
+
   return (
-    <main className="page-shell">
+    <main className="appShell">
       <header className="topbar">
-        <div className="brand-wrap">
-          <div className="brand-icon">
+        <div className="topbarBrand">
+          <div className="smallBrandIcon">
             <Wallet size={22} />
           </div>
           <div>
             <h1>Controle de Gastos</h1>
-            <p className="muted">Bem-vindo(a), {selectedProfile === "mulher" ? "Mulher" : "Marido"}</p>
+            <p>Bem-vindo(a), {perfil}</p>
           </div>
         </div>
 
-        <Link href="/" className="logout-button">
+        <button className="secondaryBtn" onClick={logout}>
+          <LogOut size={18} />
           Sair
-        </Link>
+        </button>
       </header>
 
-      <section className="content-area">
-        <div className="section-header">
-          <div className="title-wrap">
+      <section className="contentWrap">
+        <div className="sectionHead">
+          <div className="sectionTitle">
             <CalendarDays size={22} />
-            <h2>Relatório de {monthLabel()}</h2>
+            <h2>Relatório de {getMonthLabel()}</h2>
           </div>
-          <button className="primary-button" onClick={openNewModal}>
+          <button className="primaryBtn" onClick={openCreateModal}>
             <Plus size={18} />
             Cadastrar Gasto
           </button>
         </div>
 
-        <div className="stats-grid">
-          <article className="card stat-card">
-            <span className="card-label">Total do Mês</span>
-            <strong className="money-total">{formatCurrency(summary.total)}</strong>
-            <span className="muted">{summary.count} gastos registrados</span>
+        <div className="cardsGrid">
+          <article className="summaryCard">
+            <div className="cardHead">
+              <span>Total do Mês</span>
+              <Receipt size={16} />
+            </div>
+            <strong>{formatCurrency(summary.total)}</strong>
+            <p>{summary.count} gastos registrados</p>
           </article>
 
-          <article className="card stat-card">
-            <span className="card-label">Gastos do Marido</span>
-            <strong className="money-blue">{formatCurrency(summary.husbandTotal)}</strong>
-            <span className="muted">
-              {summary.total > 0 ? ((summary.husbandTotal / summary.total) * 100).toFixed(1) : "0.0"}% do total
-            </span>
+          <article className="summaryCard">
+            <div className="cardHead">
+              <span>Gastos do Marido</span>
+              <UserRound size={16} className="blueText" />
+            </div>
+            <strong className="blueText">{formatCurrency(summary.husband)}</strong>
+            <p>{summary.husbandPct.toFixed(1)}% do total</p>
           </article>
 
-          <article className="card stat-card">
-            <span className="card-label">Gastos da Mulher</span>
-            <strong className="money-pink">{formatCurrency(summary.wifeTotal)}</strong>
-            <span className="muted">
-              {summary.total > 0 ? ((summary.wifeTotal / summary.total) * 100).toFixed(1) : "0.0"}% do total
-            </span>
+          <article className="summaryCard">
+            <div className="cardHead">
+              <span>Gastos da Mulher</span>
+              <UserRound size={16} className="pinkText" />
+            </div>
+            <strong className="pinkText">{formatCurrency(summary.wife)}</strong>
+            <p>{summary.wifePct.toFixed(1)}% do total</p>
           </article>
         </div>
 
-        <section className="card chart-card">
-          <h3>Gastos por Dia do Mês</h3>
-          <p className="muted">Visualização dos dias de maior gasto</p>
-
-          <div className="chart-box">
-            {summary.byDay.length === 0 ? (
-              <div className="empty-state">Nenhum gasto neste mês ainda.</div>
-            ) : (
-              <div className="bars-grid">
-                {summary.byDay.map((item) => (
-                  <div key={item.day} className="bar-group">
-                    <div className="bars-pair">
-                      <div
-                        className="bar blue"
-                        style={{ height: `${Math.max((item.husband / totalMax) * 220, item.husband > 0 ? 8 : 0)}px` }}
-                        title={`Marido: ${formatCurrency(item.husband)}`}
-                      />
-                      <div
-                        className="bar pink"
-                        style={{ height: `${Math.max((item.wife / totalMax) * 220, item.wife > 0 ? 8 : 0)}px` }}
-                        title={`Mulher: ${formatCurrency(item.wife)}`}
-                      />
-                    </div>
-                    <span className="bar-label">Dia {item.day}</span>
-                  </div>
-                ))}
-              </div>
-            )}
+        <section className="panel chartPanel">
+          <div className="panelHead">
+            <div>
+              <h3>Gastos por Dia do Mês</h3>
+              <p>Visualização dos dias de maior gasto</p>
+            </div>
           </div>
 
-          <div className="legend">
-            <span><i className="legend-dot blue" /> Marido</span>
-            <span><i className="legend-dot pink" /> Mulher</span>
+          <div className="chartBox">
+            <ResponsiveContainer width="100%" height={310}>
+              <BarChart data={chartData}>
+                <CartesianGrid strokeDasharray="4 4" />
+                <XAxis dataKey="day" />
+                <YAxis />
+                <Tooltip formatter={(value: number) => formatCurrency(Number(value))} />
+                <Legend />
+                <Bar dataKey="Marido" fill="#2563eb" radius={[8, 8, 0, 0]} />
+                <Bar dataKey="Mulher" fill="#ec4899" radius={[8, 8, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
           </div>
         </section>
 
-        <section className="card statement-card">
-          <h3>Extrato Detalhado</h3>
-          <p className="muted">Todos os gastos registrados neste mês</p>
+        <section className="panel">
+          <div className="panelHead">
+            <div>
+              <h3>Extrato Detalhado</h3>
+              <p>Todos os gastos registrados neste mês</p>
+            </div>
+          </div>
 
-          <div className="statement-list">
-            {summary.expenses.length === 0 ? (
-              <div className="empty-state left">Nenhum gasto cadastrado.</div>
-            ) : (
-              summary.expenses.map((expense) => (
-                <article key={expense.id} className="expense-row">
-                  <div className={`avatar ${expense.person === "MARIDO" ? "avatar-blue" : "avatar-pink"}`}>
-                    {expense.person === "MARIDO" ? <User size={18} /> : <UserRound size={18} />}
+          {loading ? (
+            <div className="emptyState">Carregando gastos...</div>
+          ) : expenses.length === 0 ? (
+            <div className="emptyState">Nenhum gasto cadastrado ainda.</div>
+          ) : (
+            <div className="expenseList">
+              {expenses.map((expense) => (
+                <article key={expense.id} className="expenseItem">
+                  <div className={`avatar ${expense.person === 'Marido' ? 'avatarBlue' : 'avatarPink'}`}>
+                    <UserRound size={18} />
                   </div>
 
-                  <div className="expense-main">
-                    <strong>{expense.description}</strong>
-                    <div className="expense-meta">
-                      <span className={expense.person === "MARIDO" ? "text-blue" : "text-pink"}>
-                        {expense.person === "MARIDO" ? "Marido" : "Mulher"}
-                      </span>
-                      <span>•</span>
-                      <span>{formatDate(expense.spentAt)}</span>
-                    </div>
+                  <div className="expenseInfo">
+                    <strong>{expense.title}</strong>
+                    <p>
+                      <span className={expense.person === 'Marido' ? 'blueText' : 'pinkText'}>{expense.person}</span>
+                      <span className="dot">•</span>
+                      <span>{formatDate(expense.spent_at)}</span>
+                    </p>
                   </div>
 
-                  <div className="expense-actions">
+                  <div className="expenseActions">
                     <strong>{formatCurrency(expense.amount)}</strong>
-                    <div className="action-buttons">
-                      <button type="button" className="icon-button" onClick={() => openEditModal(expense)} title="Editar gasto">
+                    <div className="inlineActions">
+                      <button className="iconBtn" onClick={() => openEditModal(expense)} title="Editar">
                         <Pencil size={16} />
                       </button>
-                      <button type="button" className="icon-button danger" onClick={() => handleDelete(expense)} title="Excluir gasto">
+                      <button className="iconBtn danger" onClick={() => onDelete(expense.id)} title="Excluir">
                         <Trash2 size={16} />
                       </button>
                     </div>
                   </div>
                 </article>
-              ))
-            )}
-          </div>
+              ))}
+            </div>
+          )}
         </section>
       </section>
 
-      {open ? (
-        <div className="modal-overlay" onClick={closeModal}>
-          <div className="modal-card" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
+      {showModal && (
+        <div className="modalOverlay" onClick={() => setShowModal(false)}>
+          <div className="modalCard" onClick={(event) => event.stopPropagation()}>
+            <div className="modalHeader">
               <div>
-                <h3>{form.id ? "Editar Gasto" : "Cadastrar Novo Gasto"}</h3>
-                <p className="muted">{form.id ? "Atualize os dados do gasto" : "Adicione os detalhes do gasto realizado"}</p>
+                <h3>{form.id ? 'Editar Gasto' : 'Cadastrar Novo Gasto'}</h3>
+                <p>{form.id ? 'Altere as informações abaixo' : 'Adicione os detalhes do gasto realizado'}</p>
               </div>
-              <button type="button" className="icon-button" onClick={closeModal}>
+              <button className="closeBtn" onClick={() => setShowModal(false)}>
                 <X size={18} />
               </button>
             </div>
 
-            <form className="expense-form" onSubmit={handleSubmit}>
+            <form className="formGrid" onSubmit={onSubmit}>
               <label>
                 <span>O que é?</span>
                 <input
-                  required
                   placeholder="Ex: Supermercado, Gasolina..."
-                  value={form.description}
-                  onChange={(e) => setForm((current) => ({ ...current, description: e.target.value }))}
+                  value={form.title}
+                  onChange={(event) => setForm((prev) => ({ ...prev, title: event.target.value }))}
+                  required
                 />
               </label>
 
               <label>
                 <span>Quanto foi?</span>
                 <input
-                  required
-                  inputMode="decimal"
                   placeholder="0,00"
+                  inputMode="decimal"
                   value={form.amount}
-                  onChange={(e) => setForm((current) => ({ ...current, amount: e.target.value }))}
+                  onChange={(event) => setForm((prev) => ({ ...prev, amount: event.target.value }))}
+                  required
                 />
               </label>
 
@@ -286,35 +390,32 @@ export default function DashboardClient({ initialSummary, selectedProfile }: Pro
                 <span>Quem gastou?</span>
                 <select
                   value={form.person}
-                  onChange={(e) => setForm((current) => ({ ...current, person: e.target.value as Person }))}
+                  onChange={(event) => setForm((prev) => ({ ...prev, person: event.target.value as Perfil }))}
                 >
-                  <option value="MARIDO">Marido</option>
-                  <option value="MULHER">Mulher</option>
+                  <option value="Marido">Marido</option>
+                  <option value="Mulher">Mulher</option>
                 </select>
               </label>
 
               <label>
                 <span>Data</span>
                 <input
-                  required
                   type="date"
-                  value={form.spentAt}
-                  onChange={(e) => setForm((current) => ({ ...current, spentAt: e.target.value }))}
+                  value={form.spent_at}
+                  onChange={(event) => setForm((prev) => ({ ...prev, spent_at: event.target.value }))}
+                  required
                 />
               </label>
 
-              <div className="form-actions">
-                <button type="button" className="ghost-button" onClick={closeModal}>
-                  Cancelar
-                </button>
-                <button type="submit" className="primary-button" disabled={saving}>
-                  {saving ? "Salvando..." : form.id ? "Salvar Alterações" : "Salvar Gasto"}
+              <div className="formActions">
+                <button type="submit" className="primaryBtn" disabled={saving}>
+                  {saving ? 'Salvando...' : form.id ? 'Salvar Alterações' : 'Salvar Gasto'}
                 </button>
               </div>
             </form>
           </div>
         </div>
-      ) : null}
+      )}
     </main>
   );
 }

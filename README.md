@@ -1,63 +1,50 @@
-# Controle de Gastos - versão Vercel
+# Controle de Gastos - Next.js + Neon
 
-Aplicação em **Next.js + Prisma + PostgreSQL** pronta para subir na Vercel.
+Versão simples e funcional para subir na Vercel, com:
 
-## Banco de dados escolhido
-
-Eu escolhi **Neon (Postgres)**.
-
-Motivos:
-- integra bem com projetos hospedados na Vercel via Marketplace
-- é um Postgres serverless com autoscaling e branching
-- Prisma tem documentação oficial para fluxo com Next.js e deploy na Vercel usando Postgres
-
-## Funcionalidades
-
-- seleção de perfil: marido ou mulher
+- seleção de perfil (Marido / Mulher)
 - dashboard mensal
-- total do mês
-- total por pessoa
 - gráfico por dia
-- extrato detalhado
-- cadastrar gasto
-- **editar gasto**
-- **excluir gasto**
+- cadastro de gasto
+- edição de gasto
+- exclusão de gasto
+- banco Postgres com Neon
 
-## Rodar localmente
+## Banco escolhido
+
+Escolhi **Neon Postgres** porque ele se encaixa muito bem com deploy serverless na Vercel e não exige Prisma nesta versão, deixando o build mais simples e rápido.
+
+## 1. Criar o banco no Neon
+
+Crie um projeto no Neon e copie a connection string Postgres.
+
+Exemplo de variável:
+
+```env
+DATABASE_URL=postgresql://USER:PASSWORD@HOST/DB?sslmode=require
+```
+
+## 2. Rodar localmente
 
 ```bash
 npm install
-cp .env.example .env
-# preencha DATABASE_URL
-npx prisma migrate deploy
 npm run dev
 ```
 
-## Popular com exemplo (opcional)
+## 3. Subir na Vercel
 
-```bash
-npm run seed
-```
+1. Envie este projeto para o GitHub
+2. Importe o repositório na Vercel
+3. Adicione a variável `DATABASE_URL`
+4. Faça o deploy
 
-## Subir na Vercel
+## Observação importante
 
-1. Crie um projeto na Vercel.
-2. Crie um banco **Neon Postgres**.
-3. Copie a string de conexão para a variável `DATABASE_URL`.
-4. No projeto da Vercel, adicione a variável `DATABASE_URL`.
-5. Faça o deploy.
+A tabela é criada automaticamente na primeira requisição da aplicação, então você não precisa rodar migration manual para essa versão.
 
-## Comandos úteis
+## Estrutura
 
-```bash
-npx prisma studio
-npx prisma migrate dev --name init
-npx prisma migrate deploy
-```
-
-## Estrutura principal
-
-- `app/` interface e rotas da API
-- `components/` dashboard
-- `prisma/` schema e migration inicial
-- `lib/` prisma, resumo mensal e formatadores
+- `app/page.tsx` -> interface principal
+- `app/api/expenses` -> listagem e criação
+- `app/api/expenses/[id]` -> edição e exclusão
+- `lib/db.ts` -> conexão com Neon e criação da tabela

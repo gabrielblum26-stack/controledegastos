@@ -1,26 +1,49 @@
-import { NextRequest, NextResponse } from "next/server";
-import { Person } from "@prisma/client";
-import { prisma } from "@/lib/prisma";
+import { NextRequest, NextResponse } from 'next/server';
+import { currentMonthRange, ensureSchema, sql } from '@/lib/db';
 
-export async function POST(req: NextRequest) {
-  const body = await req.json();
-  const { description, amount, person, spentAt } = body;
+export const dynamic = 'force-dynamic';
 
-  if (!description || !amount || !person) {
-    return NextResponse.json({ error: "Dados inválidos." }, { status: 400 });
+export async function GET() {
+  try {
+    await ensureSchema();
+    const { start, end } = currentMonthRange();
+
+    const rows = await sql`
+      SELECT id, title, amount::float8 AS amount, person, spent_at::text, created_at::text
+      FROM expenses
+      WHERE spent_at >= ${start} AND spent_at < ${end}
+      ORDER BY spent_at DESC, id DESC;
+    `;
+
+    return NextResponse.json(rows);
+  } catch (error) {
+    console.error(error);
+    return NextResponse.json({ error: 'Erro ao buscar gastos.' }, { status: 500 });
   }
+}
 
-  const expense = await prisma.expense.create({
-    data: {
-      description: String(description).trim(),
-      amount: Number(amount),
-      person: person === "MULHER" ? Person.MULHER : Person.MARIDO,
-      spentAt: spentAt ? new Date(spentAt) : new Date(),
-    },
-  });
+export async function POST(request: NextRequest) {
+  try {
+    await ensureSchema();
+    const body = await request.json();
+    const title = String(body.title ?? '').trim();
+    const amount = Number(body.amount);
+    const person = body.person === 'Mulher' ? 'Mulher' : 'Marido';
+    const spentAt = String(body.spent_at ?? '').trim();
 
-  return NextResponse.json({
-    ...expense,
-    amount: Number(expense.amount),
-  });
+    if (!title || !spentAt || Number.isNaN(amount) || amount < 0) {
+      return NextResponse.json({ error: 'Dados inválidos.' }, { status: 400 });
+    }
+
+    const [created] = await sql`
+      INSERT INTO expenses (title, amount, person, spent_at)
+      VALUES (${title}, ${amount}, ${person}, ${spentAt})
+      RETURNING id, title, amount::float8 AS amount, person, spent_at::text, created_at::text;
+    `;
+
+    return NextResponse.json(created, { status: 201 });
+  } catch (error) {
+    console.error(error);
+    return NextResponse.json({ error: 'Erro ao cadastrar gasto.' }, { status: 500 });
+  }
 }

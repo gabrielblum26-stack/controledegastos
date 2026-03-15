@@ -1,22 +1,10 @@
-export type Person = "MARIDO" | "MULHER";
+export type Perfil = 'Marido' | 'Mulher';
 
-export type ExpenseItem = {
-  id: string;
-  description: string;
+export type Expense = {
+  id: number;
+  title: string;
   amount: number;
-  person: Person;
-  spentAt: string;
-};
-
-export type Summary = {
-  total: number;
-  count: number;
-  husbandTotal: number;
-  wifeTotal: number;
-  byDay: Array<{
-    day: number;
-    husband: number;
-    wife: number;
-  }>;
-  expenses: ExpenseItem[];
+  person: Perfil;
+  spent_at: string;
+  created_at: string;
 };
