@@ -1,0 +1,16 @@
+{
+  "name": "controle-gastos",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start"
+  },
+  "dependencies": {
+    "next": "15.5.7",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "@neondatabase/serverless": "^0.9.0"
+  }
+}
