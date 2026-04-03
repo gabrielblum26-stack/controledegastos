@@ -24,6 +24,20 @@ export async function ensureSchema() {
     );
   `;
 
+  await sql`
+    CREATE TABLE IF NOT EXISTS bills (
+      id SERIAL PRIMARY KEY,
+      title TEXT NOT NULL,
+      amount NUMERIC(12,2) NOT NULL CHECK (amount >= 0),
+      due_date DATE NOT NULL,
+      status TEXT NOT NULL CHECK (status IN ('pending', 'paid')) DEFAULT 'pending',
+      person TEXT NOT NULL CHECK (person IN ('Marido', 'Mulher')),
+      description TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      paid_at TIMESTAMPTZ
+    );
+  `;
+
   initialized = true;
 }
 

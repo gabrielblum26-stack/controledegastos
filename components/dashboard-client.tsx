@@ -12,6 +12,7 @@ import {
   Wallet,
   X,
   LogOut,
+  Loader,
 } from 'lucide-react';
 import {
   Bar,
@@ -25,6 +26,7 @@ import {
 } from 'recharts';
 import { formatCurrency, formatDate, getMonthLabel } from '@/lib/format';
 import { Expense, Perfil } from '@/lib/types';
+import BillsClient from '@/components/bills-client';
 
 type FormState = {
   id?: number;
@@ -41,6 +43,14 @@ const initialForm = (): FormState => ({
   spent_at: new Date().toISOString().slice(0, 10),
 });
 
+type ToastType = 'success' | 'error' | 'info';
+
+interface Toast {
+  id: string;
+  message: string;
+  type: ToastType;
+}
+
 export default function DashboardClient() {
   const [perfil, setPerfil] = useState<Perfil | null>(null);
   const [expenses, setExpenses] = useState<Expense[]>([]);
@@ -48,6 +58,8 @@ export default function DashboardClient() {
   const [showModal, setShowModal] = useState(false);
   const [form, setForm] = useState<FormState>(initialForm());
   const [saving, setSaving] = useState(false);
+  const [toasts, setToasts] = useState<Toast[]>([]);
+  const [formErrors, setFormErrors] = useState<Record<string, string>>({});
 
   useEffect(() => {
     const saved = window.localStorage.getItem('controle-gastos-perfil');
@@ -82,8 +94,48 @@ export default function DashboardClient() {
     setPerfil(null);
   }
 
+  function addToast(message: string, type: ToastType) {
+    const id = Date.now().toString();
+    setToasts((prev) => [...prev, { id, message, type }]);
+    setTimeout(() => {
+      setToasts((prev) => prev.filter((t) => t.id !== id));
+    }, 3000);
+  }
+
+  function validateForm(): boolean {
+    const errors: Record<string, string> = {};
+
+    if (!form.title.trim()) {
+      errors.title = 'Título é obrigatório';
+    } else if (form.title.length > 100) {
+      errors.title = 'Título deve ter no máximo 100 caracteres';
+    }
+
+    const amount = Number(form.amount.replace(',', '.'));
+    if (!form.amount || isNaN(amount)) {
+      errors.amount = 'Valor é obrigatório';
+    } else if (amount <= 0) {
+      errors.amount = 'Valor deve ser maior que 0';
+    } else if (amount > 999999.99) {
+      errors.amount = 'Valor máximo é 999.999,99';
+    }
+
+    const date = new Date(form.spent_at);
+    if (!form.spent_at) {
+      errors.spent_at = 'Data é obrigatória';
+    } else if (isNaN(date.getTime())) {
+      errors.spent_at = 'Data inválida';
+    } else if (date > new Date()) {
+      errors.spent_at = 'Não é permitido cadastrar em datas futuras';
+    }
+
+    setFormErrors(errors);
+    return Object.keys(errors).length === 0;
+  }
+
   function openCreateModal() {
     setForm(initialForm());
+    setFormErrors({});
     setShowModal(true);
   }
 
@@ -95,11 +147,18 @@ export default function DashboardClient() {
       person: expense.person,
       spent_at: expense.spent_at.slice(0, 10),
     });
+    setFormErrors({});
     setShowModal(true);
   }
 
   async function onSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+
+    if (!validateForm()) {
+      addToast('Verifique os erros no formulário', 'error');
+      return;
+    }
+
     setSaving(true);
 
     const normalizedAmount = Number(form.amount.replace(',', '.'));
@@ -122,14 +181,20 @@ export default function DashboardClient() {
       });
 
       if (!response.ok) {
-        throw new Error('Falha ao salvar gasto.');
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Falha ao salvar gasto.');
       }
 
       setShowModal(false);
       setForm(initialForm());
+      setFormErrors({});
       await loadExpenses();
+      addToast(
+        isEditing ? 'Gasto atualizado com sucesso!' : 'Gasto cadastrado com sucesso!',
+        'success'
+      );
     } catch (error) {
-      alert(error instanceof Error ? error.message : 'Erro inesperado.');
+      addToast(error instanceof Error ? error.message : 'Erro inesperado.', 'error');
     } finally {
       setSaving(false);
     }
@@ -145,12 +210,14 @@ export default function DashboardClient() {
       });
 
       if (!response.ok) {
-        throw new Error('Falha ao excluir gasto.');
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Falha ao excluir gasto.');
       }
 
       await loadExpenses();
+      addToast('Gasto excluído com sucesso!', 'success');
     } catch (error) {
-      alert(error instanceof Error ? error.message : 'Erro inesperado.');
+      addToast(error instanceof Error ? error.message : 'Erro inesperado.', 'error');
     }
   }
 
@@ -223,6 +290,22 @@ export default function DashboardClient() {
 
   return (
     <main className="appShell">
+      {/* Toast Container */}
+      <div className="toastContainer">
+        {toasts.map((toast) => (
+          <div key={toast.id} className={`toastItem toastItem-${toast.type}`}>
+            <span>{toast.message}</span>
+            <button
+              className="toastClose"
+              onClick={() => setToasts((prev) => prev.filter((t) => t.id !== toast.id))}
+              aria-label="Fechar notificação"
+            >
+              <X size={16} />
+            </button>
+          </div>
+        ))}
+      </div>
+
       <header className="topbar">
         <div className="topbarBrand">
           <div className="smallBrandIcon">
@@ -234,7 +317,7 @@ export default function DashboardClient() {
           </div>
         </div>
 
-        <button className="secondaryBtn" onClick={logout}>
+        <button className="secondaryBtn" onClick={logout} aria-label="Sair da aplicação">
           <LogOut size={18} />
           Sair
         </button>
@@ -246,7 +329,11 @@ export default function DashboardClient() {
             <CalendarDays size={22} />
             <h2>Relatório de {getMonthLabel()}</h2>
           </div>
-          <button className="primaryBtn" onClick={openCreateModal}>
+          <button
+            className="primaryBtn"
+            onClick={openCreateModal}
+            aria-label="Abrir formulário para cadastrar novo gasto"
+          >
             <Plus size={18} />
             Cadastrar Gasto
           </button>
@@ -320,14 +407,20 @@ export default function DashboardClient() {
             <div className="expenseList">
               {expenses.map((expense) => (
                 <article key={expense.id} className="expenseItem">
-                  <div className={`avatar ${expense.person === 'Marido' ? 'avatarBlue' : 'avatarPink'}`}>
+                  <div
+                    className={`avatar ${
+                      expense.person === 'Marido' ? 'avatarBlue' : 'avatarPink'
+                    }`}
+                  >
                     <UserRound size={18} />
                   </div>
 
                   <div className="expenseInfo">
                     <strong>{expense.title}</strong>
                     <p>
-                      <span className={expense.person === 'Marido' ? 'blueText' : 'pinkText'}>{expense.person}</span>
+                      <span className={expense.person === 'Marido' ? 'blueText' : 'pinkText'}>
+                        {expense.person}
+                      </span>
                       <span className="dot">•</span>
                       <span>{formatDate(expense.spent_at)}</span>
                     </p>
@@ -336,10 +429,20 @@ export default function DashboardClient() {
                   <div className="expenseActions">
                     <strong>{formatCurrency(expense.amount)}</strong>
                     <div className="inlineActions">
-                      <button className="iconBtn" onClick={() => openEditModal(expense)} title="Editar">
+                      <button
+                        className="iconBtn"
+                        onClick={() => openEditModal(expense)}
+                        title="Editar gasto"
+                        aria-label={`Editar gasto: ${expense.title}`}
+                      >
                         <Pencil size={16} />
                       </button>
-                      <button className="iconBtn danger" onClick={() => onDelete(expense.id)} title="Excluir">
+                      <button
+                        className="iconBtn danger"
+                        onClick={() => onDelete(expense.id)}
+                        title="Excluir gasto"
+                        aria-label={`Excluir gasto: ${expense.title}`}
+                      >
                         <Trash2 size={16} />
                       </button>
                     </div>
@@ -349,67 +452,121 @@ export default function DashboardClient() {
             </div>
           )}
         </section>
+
+        {/* Bills Section */}
+        <BillsClient onAddToast={addToast} />
       </section>
 
+      {/* Modal */}
       {showModal && (
         <div className="modalOverlay" onClick={() => setShowModal(false)}>
-          <div className="modalCard" onClick={(event) => event.stopPropagation()}>
+          <div className="modalCard" onClick={(e) => e.stopPropagation()}>
             <div className="modalHeader">
-              <div>
-                <h3>{form.id ? 'Editar Gasto' : 'Cadastrar Novo Gasto'}</h3>
-                <p>{form.id ? 'Altere as informações abaixo' : 'Adicione os detalhes do gasto realizado'}</p>
-              </div>
-              <button className="closeBtn" onClick={() => setShowModal(false)}>
-                <X size={18} />
+              <h2>{form.id ? 'Editar Gasto' : 'Novo Gasto'}</h2>
+              <button
+                className="closeBtn"
+                onClick={() => setShowModal(false)}
+                aria-label="Fechar modal"
+              >
+                <X size={20} />
               </button>
             </div>
 
-            <form className="formGrid" onSubmit={onSubmit}>
-              <label>
-                <span>O que é?</span>
-                <input
-                  placeholder="Ex: Supermercado, Gasolina..."
-                  value={form.title}
-                  onChange={(event) => setForm((prev) => ({ ...prev, title: event.target.value }))}
-                  required
-                />
-              </label>
+            <form onSubmit={onSubmit}>
+              <div className="formGrid">
+                <div className="formGroup">
+                  <label htmlFor="title">Descrição *</label>
+                  <input
+                    id="title"
+                    type="text"
+                    placeholder="Ex: Supermercado"
+                    value={form.title}
+                    onChange={(e) => setForm({ ...form, title: e.target.value })}
+                    maxLength={100}
+                    aria-invalid={!!formErrors.title}
+                    aria-describedby={formErrors.title ? 'title-error' : undefined}
+                  />
+                  {formErrors.title && (
+                    <span id="title-error" className="errorMessage">
+                      {formErrors.title}
+                    </span>
+                  )}
+                </div>
 
-              <label>
-                <span>Quanto foi?</span>
-                <input
-                  placeholder="0,00"
-                  inputMode="decimal"
-                  value={form.amount}
-                  onChange={(event) => setForm((prev) => ({ ...prev, amount: event.target.value }))}
-                  required
-                />
-              </label>
+                <div className="formGroup">
+                  <label htmlFor="amount">Valor (R$) *</label>
+                  <input
+                    id="amount"
+                    type="text"
+                    placeholder="0,00"
+                    value={form.amount}
+                    onChange={(e) => setForm({ ...form, amount: e.target.value })}
+                    aria-invalid={!!formErrors.amount}
+                    aria-describedby={formErrors.amount ? 'amount-error' : undefined}
+                  />
+                  {formErrors.amount && (
+                    <span id="amount-error" className="errorMessage">
+                      {formErrors.amount}
+                    </span>
+                  )}
+                </div>
 
-              <label>
-                <span>Quem gastou?</span>
-                <select
-                  value={form.person}
-                  onChange={(event) => setForm((prev) => ({ ...prev, person: event.target.value as Perfil }))}
-                >
-                  <option value="Marido">Marido</option>
-                  <option value="Mulher">Mulher</option>
-                </select>
-              </label>
+                <div className="formGroup">
+                  <label htmlFor="person">Quem gastou? *</label>
+                  <select
+                    id="person"
+                    value={form.person}
+                    onChange={(e) => setForm({ ...form, person: e.target.value as Perfil })}
+                  >
+                    <option value="Marido">Marido</option>
+                    <option value="Mulher">Mulher</option>
+                  </select>
+                </div>
 
-              <label>
-                <span>Data</span>
-                <input
-                  type="date"
-                  value={form.spent_at}
-                  onChange={(event) => setForm((prev) => ({ ...prev, spent_at: event.target.value }))}
-                  required
-                />
-              </label>
+                <div className="formGroup">
+                  <label htmlFor="spent_at">Data *</label>
+                  <input
+                    id="spent_at"
+                    type="date"
+                    value={form.spent_at}
+                    onChange={(e) => setForm({ ...form, spent_at: e.target.value })}
+                    aria-invalid={!!formErrors.spent_at}
+                    aria-describedby={formErrors.spent_at ? 'spent_at-error' : undefined}
+                  />
+                  {formErrors.spent_at && (
+                    <span id="spent_at-error" className="errorMessage">
+                      {formErrors.spent_at}
+                    </span>
+                  )}
+                </div>
+              </div>
 
               <div className="formActions">
-                <button type="submit" className="primaryBtn" disabled={saving}>
-                  {saving ? 'Salvando...' : form.id ? 'Salvar Alterações' : 'Salvar Gasto'}
+                <button
+                  type="button"
+                  className="secondaryBtn"
+                  onClick={() => setShowModal(false)}
+                  disabled={saving}
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="primaryBtn"
+                  disabled={saving}
+                  aria-busy={saving}
+                >
+                  {saving ? (
+                    <>
+                      <Loader size={18} className="spinner" />
+                      Salvando...
+                    </>
+                  ) : (
+                    <>
+                      <Plus size={18} />
+                      {form.id ? 'Atualizar' : 'Cadastrar'}
+                    </>
+                  )}
                 </button>
               </div>
             </form>

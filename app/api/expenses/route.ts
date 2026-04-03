@@ -31,8 +31,23 @@ export async function POST(request: NextRequest) {
     const person = body.person === 'Mulher' ? 'Mulher' : 'Marido';
     const spentAt = String(body.spent_at ?? '').trim();
 
-    if (!title || !spentAt || Number.isNaN(amount) || amount < 0) {
-      return NextResponse.json({ error: 'Dados inválidos.' }, { status: 400 });
+    // Validação de título
+    if (!title || title.length > 100) {
+      return NextResponse.json({ error: 'Título deve ter 1-100 caracteres.' }, { status: 400 });
+    }
+
+    // Validação de data
+    const date = new Date(spentAt);
+    if (isNaN(date.getTime())) {
+      return NextResponse.json({ error: 'Data inválida.' }, { status: 400 });
+    }
+    if (date > new Date()) {
+      return NextResponse.json({ error: 'Não é permitido cadastrar gastos em datas futuras.' }, { status: 400 });
+    }
+
+    // Validação de montante
+    if (Number.isNaN(amount) || amount <= 0 || amount > 999999.99) {
+      return NextResponse.json({ error: 'Valor deve estar entre 0,01 e 999.999,99.' }, { status: 400 });
     }
 
     const [created] = await sql`
